@@ -35,7 +35,7 @@ class MiuranController extends Controller
 
 
     /**
-     * Simpan / update nominal iuran.
+     * Simpan / update total iuran tahunan.
      *
      * Karena pengaturan iuran hanya menggunakan satu record,
      * jika data belum ada -> insert.
@@ -50,9 +50,9 @@ class MiuranController extends Controller
                 'min:0',
             ],
         ], [
-            'nominaliuran.required' => 'Nominal iuran wajib diisi.',
-            'nominaliuran.numeric' => 'Nominal iuran harus berupa angka.',
-            'nominaliuran.min' => 'Nominal iuran tidak boleh kurang dari 0.',
+            'nominaliuran.required' => 'Total iuran tahunan wajib diisi.',
+            'nominaliuran.numeric' => 'Total iuran tahunan harus berupa angka.',
+            'nominaliuran.min' => 'Total iuran tahunan tidak boleh kurang dari 0.',
         ]);
 
         if ($validator->fails()) {
@@ -74,7 +74,7 @@ class MiuranController extends Controller
                     'nominaliuran' => $request->nominaliuran,
                 ]);
 
-                $message = 'Nominal iuran berhasil diperbarui';
+                $message = 'Total iuran tahunan berhasil diperbarui';
 
             } else {
 
@@ -83,7 +83,7 @@ class MiuranController extends Controller
                     'nominaliuran' => $request->nominaliuran,
                 ]);
 
-                $message = 'Nominal iuran berhasil disimpan';
+                $message = 'Total iuran tahunan berhasil disimpan';
             }
 
             return response()->json([
@@ -96,7 +96,7 @@ class MiuranController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menyimpan nominal iuran',
+                'message' => 'Gagal menyimpan total iuran tahunan',
                 'error' => $e->getMessage(),
             ], 500);
         }

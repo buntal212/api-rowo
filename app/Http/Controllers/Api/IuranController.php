@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Iuran;
-use App\Models\Miuran;
 use App\Models\Penduduk;
 use Illuminate\Http\Request;
 
@@ -14,42 +13,32 @@ class IuranController extends Controller
     {
         $data = $request->validate([
             'bulan' => ['required', 'integer', 'between:1,12'],
-            'minggu' => ['required', 'integer', 'between:1,4'],
             'tahun' => ['required', 'integer', 'between:2000,2100'],
             'search' => ['nullable', 'string', 'max:150'],
             'per_page' => ['nullable', 'integer', 'between:1,100'],
         ]);
 
-        $nominalIuran = (float) (Miuran::first()?->nominaliuran ?? 0);
         $perPage = $data['per_page'] ?? 20;
 
-        $iuran = Penduduk::query()
-            ->leftJoin('iurans', function ($join) use ($data) {
-                $join->on('iurans.penduduk_id', '=', 'penduduks.id')
-                    ->where('iurans.bulan', $data['bulan'])
-                    ->where('iurans.minggu', $data['minggu'])
-                    ->where('iurans.tahun', $data['tahun']);
-            })
+        $iuran = Iuran::query()
+            ->join('penduduks', 'penduduks.id', '=', 'iurans.penduduk_id')
             ->where('penduduks.flaging', true)
+            ->where('iurans.bulan', $data['bulan'])
+            ->where('iurans.tahun', $data['tahun'])
             ->when($data['search'] ?? null, function ($query, $search) {
                 $query->where('penduduks.nama', 'like', "%{$search}%");
             })
             ->select([
+                'iurans.id as iuran_id',
                 'penduduks.id',
                 'penduduks.nama',
                 'iurans.nominal',
                 'iurans.tanggal_bayar',
                 'iurans.keterangan',
             ])
-            ->selectRaw("CASE WHEN iurans.id IS NULL THEN 'belum_bayar' ELSE 'lunas' END AS status")
-            ->orderBy('penduduks.nama')
-            ->paginate($perPage);
-
-        $iuran->getCollection()->transform(function ($warga) use ($nominalIuran) {
-            $warga->nominaliuran = (float) ($warga->nominal ?? $nominalIuran);
-
-            return $warga;
-        });
+            ->orderByDesc('iurans.tanggal_bayar')
+            ->orderByDesc('iurans.id')
+            ->simplePaginate($perPage);
 
         return response()->json([
             'status' => true,
@@ -61,13 +50,16 @@ class IuranController extends Controller
     public function simpan(Request $request)
     {
         $data = $request->validate([
+            'id' => ['nullable', 'integer', 'exists:iurans,id'],
             'penduduk_id' => ['required', 'integer', 'exists:penduduks,id'],
             'bulan' => ['required', 'integer', 'between:1,12'],
-            'minggu' => ['required', 'integer', 'between:1,4'],
             'tahun' => ['required', 'integer', 'between:2000,2100'],
             'nominal' => ['required', 'numeric', 'gt:0'],
             'tanggal_bayar' => ['required', 'date'],
             'keterangan' => ['nullable', 'string', 'max:500'],
+        ], [
+            'id.integer' => 'ID iuran tidak valid.',
+            'id.exists' => 'Data iuran tidak ditemukan.',
         ]);
 
         $penduduk = Penduduk::query()
@@ -82,23 +74,54 @@ class IuranController extends Controller
             ], 422);
         }
 
-        $iuran = Iuran::updateOrCreate(
-            [
-                'penduduk_id' => $data['penduduk_id'],
-                'bulan' => $data['bulan'],
-                'minggu' => $data['minggu'],
-                'tahun' => $data['tahun'],
-            ],
-            [
-                'nominal' => $data['nominal'],
-                'tanggal_bayar' => $data['tanggal_bayar'],
-                'keterangan' => $data['keterangan'] ?? null,
-            ],
-        );
+        $payload = [
+            'penduduk_id' => $data['penduduk_id'],
+            'bulan' => $data['bulan'],
+            'tahun' => $data['tahun'],
+            'nominal' => $data['nominal'],
+            'tanggal_bayar' => $data['tanggal_bayar'],
+            'keterangan' => $data['keterangan'] ?? null,
+        ];
+
+        if (!empty($data['id'])) {
+            $iuran = Iuran::query()
+                ->whereKey($data['id'])
+                ->where('penduduk_id', $data['penduduk_id'])
+                ->first();
+
+            if (!$iuran) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Data iuran tidak sesuai dengan warga yang dipilih.',
+                ], 422);
+            }
+
+            $iuran->update($payload);
+            $message = 'Pembayaran iuran berhasil diperbarui.';
+        } else {
+            $sudahAda = Iuran::query()
+                ->where('penduduk_id', $data['penduduk_id'])
+                ->where('bulan', $data['bulan'])
+                ->where('tahun', $data['tahun'])
+                ->exists();
+
+            if ($sudahAda) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Pembayaran iuran untuk periode ini sudah ada. Gunakan tombol Update.',
+                ], 422);
+            }
+
+            $iuran = Iuran::create([
+                ...$payload,
+                'minggu' => 1,
+            ]);
+            $message = 'Pembayaran iuran berhasil ditambahkan.';
+        }
 
         return response()->json([
             'status' => true,
-            'message' => 'Pembayaran iuran berhasil disimpan.',
+            'message' => $message,
             'data' => $iuran,
         ]);
     }
