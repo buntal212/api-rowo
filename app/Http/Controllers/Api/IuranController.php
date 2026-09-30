@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Iuran;
+use App\Models\Miuran;
 use App\Models\Penduduk;
 use Illuminate\Http\Request;
 
@@ -97,18 +98,33 @@ class IuranController extends Controller
             }
 
             $iuran->update($payload);
+
             $message = 'Pembayaran iuran berhasil diperbarui.';
         } else {
-            $sudahAda = Iuran::query()
-                ->where('penduduk_id', $data['penduduk_id'])
-                ->where('bulan', $data['bulan'])
-                ->where('tahun', $data['tahun'])
-                ->exists();
 
-            if ($sudahAda) {
+            // Ambil batas maksimal iuran
+            $batasIuran = Miuran::query()
+                ->value('nominaliuran');
+
+            if ($batasIuran === null) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'Pembayaran iuran untuk periode ini sudah ada. Gunakan tombol Update.',
+                    'message' => 'Nominal iuran belum diatur.',
+                ], 422);
+            }
+
+            // Total pembayaran warga yang sudah masuk
+            $totIuran = Iuran::query()
+                ->where('penduduk_id', $data['penduduk_id'])
+                ->sum('nominal');
+
+            // Total setelah ditambah pembayaran baru
+            $totalSetelahBayar = $totIuran + $payload['nominal'];
+
+            if ($totalSetelahBayar > $batasIuran) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Pembayaran melampaui batas pembayaran.',
                 ], 422);
             }
 
@@ -116,6 +132,7 @@ class IuranController extends Controller
                 ...$payload,
                 'minggu' => 1,
             ]);
+
             $message = 'Pembayaran iuran berhasil ditambahkan.';
         }
 
