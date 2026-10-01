@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 class PengeluaranController extends Controller
 {
+    private const JENIS_TRANSAKSI = ['RUKEM', 'KOTAK_MASJID', 'SUMBANGAN_WARGA'];
+
     public function getList(Request $request)
     {
         $data = $request->validate([
@@ -39,6 +41,7 @@ class PengeluaranController extends Controller
     {
         $data = $request->validate([
             'kegiatan' => ['required', 'string', 'max:255'],
+            'jenis_transaksi' => ['required', 'string', 'in:' . implode(',', self::JENIS_TRANSAKSI)],
             'rincian' => ['required', 'array', 'min:1'],
             'rincian.*.harga_satuan' => ['required', 'numeric', 'gt:0'],
             'rincian.*.jumlah' => ['required', 'integer', 'min:1'],
@@ -60,6 +63,7 @@ class PengeluaranController extends Controller
             $header = PengeluaranHeader::create([
                 'tanggal_pengeluaran' => date('Y-m-d'),
                 'kegiatan' => $data['kegiatan'],
+                'jenis_transaksi' => $data['jenis_transaksi'],
                 'total_nominal' => $totalNominal,
             ]);
 
