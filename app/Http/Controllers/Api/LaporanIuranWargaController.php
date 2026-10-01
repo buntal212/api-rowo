@@ -4,25 +4,34 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Iuran;
-use App\Models\Miuran;
 use App\Models\Penduduk;
+use App\Services\IuranStatusTahunanService;
 use Illuminate\Http\Request;
 
 class LaporanIuranWargaController extends Controller
 {
+    public function __construct(private IuranStatusTahunanService $iuranStatusTahunanService)
+    {
+    }
+
     public function index(Request $request)
     {
         $data = $request->validate([
             'tahun' => ['required', 'integer', 'between:2000,2100'],
+            'status' => ['nullable', 'in:semua,belum_bayar,lunas,belum_lunas'],
             'search' => ['nullable', 'string', 'max:150'],
             'per_page' => ['nullable', 'integer', 'between:1,100'],
         ]);
 
         $perPage = $data['per_page'] ?? 20;
 
-        $targetIuran = (float) (Miuran::query()->value('nominaliuran') ?? 0);
+        $this->iuranStatusTahunanService->pastikanUntukTahun($data['tahun']);
 
         $query = Penduduk::query()
+            ->join('iuran_status_tahunan', function ($join) use ($data) {
+                $join->on('iuran_status_tahunan.penduduk_id', '=', 'penduduks.id')
+                    ->where('iuran_status_tahunan.tahun', $data['tahun']);
+            })
             ->leftJoin('iurans', function ($join) use ($data) {
                 $join->on('iurans.penduduk_id', '=', 'penduduks.id')
                     ->where('iurans.tahun', $data['tahun']);
@@ -31,7 +40,10 @@ class LaporanIuranWargaController extends Controller
             ->when($data['search'] ?? null, function ($builder, $search) {
                 $builder->where('penduduks.nama', 'like', "%{$search}%");
             })
-            ->groupBy('penduduks.id', 'penduduks.nama');
+            ->when(($data['status'] ?? 'semua') !== 'semua', function ($builder) use ($data) {
+                $builder->where('iuran_status_tahunan.status', $data['status']);
+            })
+            ->groupBy('penduduks.id', 'penduduks.nama', 'iuran_status_tahunan.target_iuran');
 
         $ringkasan = (clone $query)
             ->selectRaw('COUNT(penduduks.id) as total_warga')
@@ -51,6 +63,7 @@ class LaporanIuranWargaController extends Controller
             ->select([
                 'penduduks.id',
                 'penduduks.nama',
+                'iuran_status_tahunan.target_iuran',
             ])
             ->selectRaw('COUNT(iurans.id) as total_transaksi')
             ->selectRaw('COALESCE(SUM(iurans.nominal), 0) as total_iuran')
@@ -63,7 +76,7 @@ class LaporanIuranWargaController extends Controller
             'ringkasan' => [
                 'total_warga' => $ringkasan['total_warga'],
                 'total_iuran' => $ringkasan['total_iuran'],
-                'target_iuran' => $targetIuran,
+                'target_iuran' => null,
             ],
             'data' => $warga,
         ]);
@@ -92,7 +105,7 @@ class LaporanIuranWargaController extends Controller
             ], 422);
         }
 
-        $targetIuran = (float) (Miuran::query()->value('nominaliuran') ?? 0);
+        $rekap = $this->iuranStatusTahunanService->perbaruiStatus($warga->id, $data['tahun']);
         $perPage = $data['per_page'] ?? 20;
 
         $query = Iuran::query()
@@ -114,7 +127,7 @@ class LaporanIuranWargaController extends Controller
                 'id' => $warga->id,
                 'nama' => $warga->nama,
                 'total_iuran' => $totalIuran,
-                'target_iuran' => $targetIuran,
+                'target_iuran' => $rekap->target_iuran,
             ],
             'data' => $transaksi,
         ]);

@@ -4,11 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Miuran;
+use App\Services\IuranStatusTahunanService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class MiuranController extends Controller
 {
+    public function __construct(private IuranStatusTahunanService $iuranStatusTahunanService)
+    {
+    }
+
     /**
      * Mengambil pengaturan iuran.
      */
@@ -68,6 +73,14 @@ class MiuranController extends Controller
             $miuran = Miuran::first();
 
             if ($miuran) {
+                $targetSebelumnya = (float) $miuran->nominaliuran;
+
+                if ($targetSebelumnya !== (float) $request->nominaliuran) {
+                    $this->iuranStatusTahunanService->pastikanUntukTahun(
+                        (int) now()->year,
+                        $targetSebelumnya
+                    );
+                }
 
                 // UPDATE
                 $miuran->update([
@@ -82,6 +95,11 @@ class MiuranController extends Controller
                 $miuran = Miuran::create([
                     'nominaliuran' => $request->nominaliuran,
                 ]);
+
+                $this->iuranStatusTahunanService->pastikanUntukTahun(
+                    (int) now()->year,
+                    (float) $miuran->nominaliuran
+                );
 
                 $message = 'Total iuran tahunan berhasil disimpan';
             }

@@ -4,17 +4,21 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Iuran;
-use App\Models\Miuran;
 use App\Models\Penduduk;
+use App\Services\IuranStatusTahunanService;
 use Illuminate\Http\Request;
 
 class IuranController extends Controller
 {
+    public function __construct(private IuranStatusTahunanService $iuranStatusTahunanService)
+    {
+    }
+
     public function getList(Request $request)
     {
         $data = $request->validate([
-            'bulan' => ['required', 'integer', 'between:1,12'],
-            'tahun' => ['required', 'integer', 'between:2000,2100'],
+            'tanggal_dari' => ['required', 'date_format:Y-m-d'],
+            'tanggal_sampai' => ['required', 'date_format:Y-m-d', 'after_or_equal:tanggal_dari'],
             'search' => ['nullable', 'string', 'max:150'],
             'per_page' => ['nullable', 'integer', 'between:1,100'],
         ]);
@@ -24,8 +28,7 @@ class IuranController extends Controller
         $iuran = Iuran::query()
             ->join('penduduks', 'penduduks.id', '=', 'iurans.penduduk_id')
             ->where('penduduks.flaging', true)
-            ->where('iurans.bulan', $data['bulan'])
-            ->where('iurans.tahun', $data['tahun'])
+            ->whereBetween('iurans.tanggal_bayar', [$data['tanggal_dari'], $data['tanggal_sampai']])
             ->when($data['search'] ?? null, function ($query, $search) {
                 $query->where('penduduks.nama', 'like', "%{$search}%");
             })
@@ -56,7 +59,6 @@ class IuranController extends Controller
             'bulan' => ['required', 'integer', 'between:1,12'],
             'tahun' => ['required', 'integer', 'between:2000,2100'],
             'nominal' => ['required', 'numeric', 'gt:0'],
-            'tanggal_bayar' => ['required', 'date'],
             'keterangan' => ['nullable', 'string', 'max:500'],
         ], [
             'id.integer' => 'ID iuran tidak valid.',
@@ -80,7 +82,6 @@ class IuranController extends Controller
             'bulan' => $data['bulan'],
             'tahun' => $data['tahun'],
             'nominal' => $data['nominal'],
-            'tanggal_bayar' => $data['tanggal_bayar'],
             'keterangan' => $data['keterangan'] ?? null,
         ];
 
@@ -97,16 +98,31 @@ class IuranController extends Controller
                 ], 422);
             }
 
+            $tahunSebelumnya = $iuran->tahun;
             $iuran->update($payload);
+
+            $this->iuranStatusTahunanService->perbaruiStatus(
+                $data['penduduk_id'],
+                $data['tahun']
+            );
+
+            if ($tahunSebelumnya !== $data['tahun']) {
+                $this->iuranStatusTahunanService->perbaruiStatus(
+                    $data['penduduk_id'],
+                    $tahunSebelumnya
+                );
+            }
 
             $message = 'Pembayaran iuran berhasil diperbarui.';
         } else {
 
-            // Ambil batas maksimal iuran
-            $batasIuran = Miuran::query()
-                ->value('nominaliuran');
+            $rekap = $this->iuranStatusTahunanService->pastikanUntukWarga(
+                $data['penduduk_id'],
+                $data['tahun']
+            );
+            $batasIuran = (float) $rekap->target_iuran;
 
-            if ($batasIuran === null) {
+            if ($batasIuran <= 0) {
                 return response()->json([
                     'status' => false,
                     'message' => 'Nominal iuran belum diatur.',
@@ -116,6 +132,7 @@ class IuranController extends Controller
             // Total pembayaran warga yang sudah masuk
             $totIuran = Iuran::query()
                 ->where('penduduk_id', $data['penduduk_id'])
+                ->where('tahun', $data['tahun'])
                 ->sum('nominal');
 
             // Total setelah ditambah pembayaran baru
@@ -130,8 +147,14 @@ class IuranController extends Controller
 
             $iuran = Iuran::create([
                 ...$payload,
+                'tanggal_bayar' => date('Y-m-d'),
                 'minggu' => 1,
             ]);
+
+            $this->iuranStatusTahunanService->perbaruiStatus(
+                $data['penduduk_id'],
+                $data['tahun']
+            );
 
             $message = 'Pembayaran iuran berhasil ditambahkan.';
         }
