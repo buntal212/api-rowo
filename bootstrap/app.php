@@ -60,6 +60,12 @@ return Application::configure(basePath: dirname(__DIR__))
                     base_path('routes/modules/dashboard.php')
                 );
 
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(
+                    base_path('routes/modules/pengeluaran.php')
+                );
+
         },
     )
 
