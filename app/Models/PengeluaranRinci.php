@@ -12,4 +12,9 @@ class PengeluaranRinci extends Model
     protected $guarded = ['id'];
 
     protected $casts = ['nominal' => 'decimal:2'];
+
+    public function header()
+    {
+        return $this->belongsTo(PengeluaranHeader::class, 'pengeluaran_header_id');
+    }
 }

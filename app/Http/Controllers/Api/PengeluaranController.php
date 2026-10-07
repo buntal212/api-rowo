@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PengeluaranHeader;
+use App\Models\PengeluaranRinci;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -76,6 +77,101 @@ class PengeluaranController extends Controller
             'status' => true,
             'message' => 'Pengeluaran berhasil disimpan.',
             'data' => $pengeluaran,
+        ]);
+    }
+
+    public function hapusRincian(PengeluaranRinci $rinci)
+    {
+        $sekarang = now();
+        $header = $rinci->header;
+        $tanggalPengeluaran = $header?->tanggal_pengeluaran;
+
+        if (!$tanggalPengeluaran ||
+            $tanggalPengeluaran->year !== $sekarang->year ||
+            $tanggalPengeluaran->month !== $sekarang->month) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Rincian pengeluaran hanya dapat dihapus pada bulan berjalan.',
+            ], 422);
+        }
+
+        $transaksiDihapus = DB::transaction(function () use ($rinci) {
+            $header = PengeluaranHeader::query()
+                ->lockForUpdate()
+                ->findOrFail($rinci->pengeluaran_header_id);
+
+            $rincian = $header->rincis()
+                ->lockForUpdate()
+                ->findOrFail($rinci->id);
+
+            $rincian->delete();
+
+            $sisaRincian = $header->rincis()->count();
+
+            if ($sisaRincian === 0) {
+                $header->delete();
+
+                return true;
+            }
+
+            $header->update([
+                'total_nominal' => $header->rincis()->sum('nominal'),
+            ]);
+
+            return false;
+        });
+
+        return response()->json([
+            'status' => true,
+            'message' => $transaksiDihapus
+                ? 'Rincian terakhir dihapus dan transaksi pengeluaran dihapus.'
+                : 'Rincian pengeluaran berhasil dihapus.',
+        ]);
+    }
+
+    public function ubahHeader(Request $request, PengeluaranHeader $pengeluaran)
+    {
+        $data = $request->validate([
+            'kegiatan' => ['required', 'string', 'max:255'],
+            'jenis_transaksi' => ['prohibited'],
+            'total_nominal' => ['prohibited'],
+        ]);
+
+        $pengeluaran->update([
+            'kegiatan' => $data['kegiatan'],
+        ]);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Header pengeluaran berhasil diperbarui.',
+            'data' => $pengeluaran->fresh(),
+        ]);
+    }
+
+    public function hapusHeader(PengeluaranHeader $pengeluaran)
+    {
+        $sekarang = now();
+        $tanggalPengeluaran = $pengeluaran->tanggal_pengeluaran;
+
+        if ($tanggalPengeluaran->year !== $sekarang->year ||
+            $tanggalPengeluaran->month !== $sekarang->month) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Header pengeluaran hanya dapat dihapus pada bulan berjalan.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($pengeluaran) {
+            $header = PengeluaranHeader::query()
+                ->lockForUpdate()
+                ->findOrFail($pengeluaran->id);
+
+            $header->delete();
+        });
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Header pengeluaran beserta seluruh rinciannya berhasil dihapus.',
         ]);
     }
 }

@@ -8,4 +8,7 @@ Route::middleware('auth:sanctum')
     ->group(function () {
         Route::get('/getlist', [PengeluaranController::class, 'getList']);
         Route::post('/simpan', [PengeluaranController::class, 'simpan']);
+        Route::patch('/{pengeluaran}/header', [PengeluaranController::class, 'ubahHeader']);
+        Route::delete('/header/{pengeluaran}', [PengeluaranController::class, 'hapusHeader']);
+        Route::delete('/rincian/{rinci}', [PengeluaranController::class, 'hapusRincian']);
     });
