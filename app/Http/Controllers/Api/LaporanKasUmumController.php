@@ -61,7 +61,7 @@ class LaporanKasUmumController extends Controller
 
         $pengeluaranRukemRows = (clone $queryPengeluaran)
             ->where('jenis_transaksi', 'RUKEM')
-            ->with('rincis:id,pengeluaran_header_id,harga_satuan,jumlah,nominal,keterangan')
+            ->with('rincis:id,pengeluaran_header_id,harga_satuan,jumlah,satuan,nominal,keterangan')
             ->orderBy('tanggal_pengeluaran')
             ->orderBy('id')
             ->get();

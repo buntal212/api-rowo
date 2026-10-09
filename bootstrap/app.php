@@ -66,6 +66,18 @@ return Application::configure(basePath: dirname(__DIR__))
                     base_path('routes/modules/pengeluaran.php')
                 );
 
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(
+                    base_path('routes/modules/pemasukan-kotak-masjid.php')
+                );
+
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(
+                    base_path('routes/modules/pengeluaran-masjid.php')
+                );
+
         },
     )
 

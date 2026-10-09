@@ -26,7 +26,7 @@ class PengeluaranController extends Controller
 
         $pengeluaran = PengeluaranHeader::query()
             ->whereBetween('tanggal_pengeluaran', [$tanggalDari, $tanggalSampai])
-            ->with('rincis:id,pengeluaran_header_id,harga_satuan,jumlah,nominal,keterangan')
+            ->with('rincis:id,pengeluaran_header_id,harga_satuan,jumlah,satuan,nominal,keterangan')
             ->orderByDesc('tanggal_pengeluaran')
             ->orderByDesc('id')
             ->simplePaginate($data['per_page'] ?? 20);
@@ -46,6 +46,7 @@ class PengeluaranController extends Controller
             'rincian' => ['required', 'array', 'min:1'],
             'rincian.*.harga_satuan' => ['required', 'numeric', 'gt:0'],
             'rincian.*.jumlah' => ['required', 'integer', 'min:1'],
+            'rincian.*.satuan' => ['required', 'string', 'max:50'],
             'rincian.*.keterangan' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -131,6 +132,16 @@ class PengeluaranController extends Controller
 
     public function ubahHeader(Request $request, PengeluaranHeader $pengeluaran)
     {
+        $sekarang = now();
+
+        if ($pengeluaran->tanggal_pengeluaran->year !== $sekarang->year ||
+            $pengeluaran->tanggal_pengeluaran->month !== $sekarang->month) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Header pengeluaran hanya dapat diubah pada bulan berjalan.',
+            ], 422);
+        }
+
         $data = $request->validate([
             'kegiatan' => ['required', 'string', 'max:255'],
             'jenis_transaksi' => ['prohibited'],

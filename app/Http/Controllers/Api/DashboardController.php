@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Iuran;
+use App\Models\PemasukanKotakMasjid;
 use App\Models\PengeluaranHeader;
+use App\Models\PengeluaranMasjidHeader;
 use App\Models\Saldo;
 
 class DashboardController extends Controller
@@ -53,6 +55,56 @@ class DashboardController extends Controller
                 'pengeluaran_bulan_berjalan' => $pengeluaranBulanBerjalan,
 
                 'saldo_rukem' => $saldoRukem,
+            ],
+        ]);
+    }
+
+    public function saldoKotakMasjid()
+    {
+        $sekarang = now();
+        $bulanLalu = $sekarang->copy()->subMonth();
+
+        $saldoPerJenis = collect(['KOTAK_AMAL', 'PEMBANGUNAN_MASJID'])
+            ->mapWithKeys(function (string $jenis) use ($sekarang, $bulanLalu) {
+                $saldoAwal = (float) Saldo::query()
+                    ->where('pemilik', $jenis)
+                    ->where('bulan', $bulanLalu->month)
+                    ->where('tahun', $bulanLalu->year)
+                    ->sum('nominal');
+
+                $pemasukan = (float) PemasukanKotakMasjid::query()
+                    ->where('jenis_pemasukan', $jenis)
+                    ->whereMonth('tanggal_masuk', $sekarang->month)
+                    ->whereYear('tanggal_masuk', $sekarang->year)
+                    ->sum('nominal');
+
+                $pengeluaran = (float) PengeluaranMasjidHeader::query()
+                    ->where('jenis_sumber_dana', $jenis)
+                    ->whereMonth('tanggal_pengeluaran', $sekarang->month)
+                    ->whereYear('tanggal_pengeluaran', $sekarang->year)
+                    ->sum('total_nominal');
+
+                return [
+                    $jenis => [
+                        'saldo_awal' => $saldoAwal,
+                        'pemasukan' => $pemasukan,
+                        'pengeluaran' => $pengeluaran,
+                        'saldo' => $saldoAwal + $pemasukan - $pengeluaran,
+                    ],
+                ];
+            });
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Saldo kotak masjid berhasil diambil.',
+            'data' => [
+                'bulan' => $sekarang->month,
+                'tahun' => $sekarang->year,
+                'saldo_awal' => $saldoPerJenis->sum('saldo_awal'),
+                'pemasukan_bulan_berjalan' => $saldoPerJenis->sum('pemasukan'),
+                'pengeluaran_bulan_berjalan' => $saldoPerJenis->sum('pengeluaran'),
+                'saldo_kotak_masjid' => $saldoPerJenis->sum('saldo'),
+                'saldo_per_jenis' => $saldoPerJenis,
             ],
         ]);
     }
